@@ -1,0 +1,25 @@
+# Rust build artifacts
+/target/
+**/target/
+*.rs.bk
+*.pdb
+*.exe
+*.dll
+*.exp
+*.lib
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# IDE / OS junk
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Logs / data files (if any)
+*.log
+*.csv
