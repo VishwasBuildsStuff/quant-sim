@@ -11,6 +11,7 @@ sys.path.insert(0, os.getcwd())
 import yfinance as yf
 import pandas as pd
 import numpy as np
+import time  # Added for delays
 from flask import Flask, jsonify, render_template_string
 from datetime import datetime
 
@@ -49,59 +50,65 @@ def get_market_overview():
         try:
             df = yf.download(sym, period='2d', interval='1d', progress=False)
             if len(df) >= 2:
-                close = df['Close'].iloc[-1]
-                prev = df['Close'].iloc[-2]
+                # Convert to float explicitly
+                close = float(df['Close'].iloc[-1])
+                prev = float(df['Close'].iloc[-2])
                 change = ((close - prev) / prev) * 100
                 data[name] = {'value': round(close, 2), 'change': round(change, 2)}
-        except:
+            else:
+                data[name] = {'value': 'N/A', 'change': 0.0}
+        except Exception as e:
+            print(f"Warning: Could not fetch {name}: {e}")
             data[name] = {'value': 'N/A', 'change': 0.0}
     return data
 
 def get_live_prices():
     """Fetch current prices for watchlist"""
     data = []
-    try:
-        tickers = list(WATCHLIST.values())
-        df = yf.download(tickers, period='2d', interval='1d', progress=False, group_by='ticker')
-        
-        for name, sym in WATCHLIST.items():
-            try:
-                ticker_df = df[sym] if isinstance(df.columns, pd.MultiIndex) else df
-                if len(ticker_df) >= 2:
-                    close = ticker_df['Close'].iloc[-1]
-                    prev = ticker_df['Close'].iloc[-2]
-                    change = ((close - prev) / prev) * 100
-                    
-                    # Intraday status
-                    try:
-                        live = yf.Ticker(sym).fast_info
-                        current = live.last_price
-                        day_high = live.day_high
-                        day_low = live.day_low
-                    except:
-                        current = close
-                        day_high = close * 1.01
-                        day_low = close * 0.99
-                        
-                    data.append({
-                        'name': name,
-                        'price': round(current, 2),
-                        'change': round(change, 2),
-                        'high': round(day_high, 2),
-                        'low': round(day_low, 2)
-                    })
-            except:
-                continue
-    except Exception as e:
-        print(f"Error fetching prices: {e}")
-        
+    # Fix TTM -> TATAMOTORS
+    safe_watchlist = {k: v if 'TTM' not in v else 'TATAMOTORS.NS' for k, v in WATCHLIST.items()}
+
+    for name, sym in safe_watchlist.items():
+        try:
+            df = yf.download(sym, period='2d', interval='1d', progress=False)
+            if len(df) >= 2:
+                close = float(df['Close'].iloc[-1])
+                prev = float(df['Close'].iloc[-2])
+                change = ((close - prev) / prev) * 100
+
+                # Fallback values
+                day_high = close * 1.01
+                day_low = close * 0.99
+
+                try:
+                    info = yf.Ticker(sym).fast_info
+                    if info.last_price:
+                        close = float(info.last_price)
+                    if info.day_high:
+                        day_high = float(info.day_high)
+                    if info.day_low:
+                        day_low = float(info.day_low)
+                except:
+                    pass  # Use fallback if fast_info fails
+
+                data.append({
+                    'name': name,
+                    'price': round(close, 2),
+                    'change': round(change, 2),
+                    'high': round(day_high, 2),
+                    'low': round(day_low, 2)
+                })
+            time.sleep(0.5)  # Add delay to avoid Yahoo rate limiting
+        except Exception as e:
+            print(f"Warning: Could not fetch {name}: {e}")
+
     return data
 
 def get_signals():
     """Read paper trading log"""
     if not os.path.exists(LOG_FILE):
         return []
-        
+
     df = pd.read_csv(LOG_FILE)
     df = df.sort_values('Time', ascending=False)
     return df.head(20).to_dict('records')
@@ -110,14 +117,14 @@ def get_portfolio():
     """Calculate current paper portfolio value"""
     if not os.path.exists(LOG_FILE):
         return {'equity': INITIAL_CAPITAL, 'pnl': 0.0, 'pnl_pct': 0.0, 'cash': INITIAL_CAPITAL}
-        
+
     df = pd.read_csv(LOG_FILE)
     if df.empty:
         return {'equity': INITIAL_CAPITAL, 'pnl': 0.0, 'pnl_pct': 0.0, 'cash': INITIAL_CAPITAL}
-        
+
     last_cash = df.iloc[-1]['Cash_Balance']
     total_pnl = df['PnL'].sum()
-    
+
     # Get current holdings
     current_holdings = {}
     for _, row in df.iterrows():
@@ -129,7 +136,7 @@ def get_portfolio():
                 current_holdings[row['Symbol']] -= row['Qty']
                 if current_holdings[row['Symbol']] <= 0:
                     del current_holdings[row['Symbol']]
-                    
+
     # Calculate holding value
     holding_value = 0.0
     for sym_name, qty in current_holdings.items():
@@ -138,11 +145,11 @@ def get_portfolio():
             holding_value += price * qty
         except:
             pass
-            
+
     total_equity = last_cash + holding_value
     pnl = total_equity - INITIAL_CAPITAL
     pnl_pct = (pnl / INITIAL_CAPITAL) * 100
-    
+
     return {
         'equity': round(total_equity, 2),
         'pnl': round(pnl, 2),
@@ -154,31 +161,36 @@ def get_portfolio():
 def get_market_insights():
     """Top gainers and losers in NSE"""
     try:
-        # Fetch NSE top stocks
         stocks = list(WATCHLIST.values())
         data = []
-        
+
         for sym in stocks:
             try:
-                ticker = yf.Ticker(sym)
-                info = ticker.fast_info
-                prev_close = info.previous_close
-                current = info.last_price
-                change = ((current - prev_close) / prev_close) * 100
-                name = sym.replace('.NS', '')
-                data.append({'name': name, 'change': round(change, 2)})
+                # Skip TTM, use TATAMOTORS
+                if 'TTM' in sym:
+                    sym = 'TATAMOTORS.NS'
+
+                df = yf.download(sym, period='2d', interval='1d', progress=False)
+                if len(df) >= 2:
+                    close = float(df['Close'].iloc[-1])
+                    prev = float(df['Close'].iloc[-2])
+                    change = ((close - prev) / prev) * 100
+                    name = sym.replace('.NS', '')
+                    data.append({'name': name, 'change': round(change, 2)})
+                time.sleep(0.3)  # Rate limit delay
             except:
                 pass
-                
+
         data.sort(key=lambda x: x['change'], reverse=True)
-        
+
         return {
-            'top_gainers': data[:3],
-            'top_losers': data[-3:][::-1],
-            'market_status': 'OPEN' if datetime.now().time().hour >= 9 and datetime.now().time().hour < 15 else 'CLOSED'
+            'top_gainers': data[:3] if data else [],
+            'top_losers': data[-3:][::-1] if data else [],
+            'market_status': 'CLOSED'  # Default to closed, will update on market hours
         }
-    except:
-        return {'top_gainers': [], 'top_losers': [], 'market_status': 'UNKNOWN'}
+    except Exception as e:
+        print(f"Error fetching insights: {e}")
+        return {'top_gainers': [], 'top_losers': [], 'market_status': 'CLOSED'}
 
 # ============================================================
 # MOBILE FRONTEND TEMPLATE
