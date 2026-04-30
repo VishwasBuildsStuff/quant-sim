@@ -125,12 +125,16 @@ class MovingAverageCrossoverStrategy(Strategy):
         super().__init__("MA Crossover", params)
         self.short_window = self.params.get('short_window', 20)
         self.long_window = self.params.get('long_window', 50)
+        self.min_crossover_pct = self.params.get('min_crossover_pct', 0.002)
+        self.confirmation_bars = self.params.get('confirmation_bars', 2)
         
         self.price_history = []
         self.short_ma = 0.0
         self.long_ma = 0.0
         self.prev_short_ma = 0.0
         self.prev_long_ma = 0.0
+        self.spread_sign_history: deque = deque(maxlen=max(1, self.confirmation_bars))
+        self.position_state = "FLAT"
     
     def on_data(self, market_event: MarketEvent) -> Optional[SignalEvent]:
         self.price_history.append(market_event.price)
@@ -146,25 +150,41 @@ class MovingAverageCrossoverStrategy(Strategy):
         self.short_ma = np.mean(recent_prices[-self.short_window:])
         self.long_ma = np.mean(recent_prices)
         
-        # Check for crossover
-        signal = None
+        if self.long_ma == 0:
+            return None
         
-        if self.prev_short_ma <= self.prev_long_ma and self.short_ma > self.long_ma:
-            # Bullish crossover
+        spread_pct = (self.short_ma - self.long_ma) / self.long_ma
+        if spread_pct > self.min_crossover_pct:
+            self.spread_sign_history.append(1)
+        elif spread_pct < -self.min_crossover_pct:
+            self.spread_sign_history.append(-1)
+        else:
+            self.spread_sign_history.append(0)
+        
+        if len(self.spread_sign_history) < self.confirmation_bars:
+            return None
+        
+        # Check for crossover with confirmation
+        signal = None
+        bullish_confirmed = all(x == 1 for x in self.spread_sign_history)
+        bearish_confirmed = all(x == -1 for x in self.spread_sign_history)
+        
+        if bullish_confirmed and self.position_state != "LONG":
             signal = SignalEvent(
                 timestamp=market_event.timestamp,
                 instrument=market_event.instrument,
                 signal_type="LONG",
                 strength=1.0
             )
-        elif self.prev_short_ma >= self.prev_long_ma and self.short_ma < self.long_ma:
-            # Bearish crossover
+            self.position_state = "LONG"
+        elif bearish_confirmed and self.position_state == "LONG":
             signal = SignalEvent(
                 timestamp=market_event.timestamp,
                 instrument=market_event.instrument,
                 signal_type="SHORT",
                 strength=1.0
             )
+            self.position_state = "FLAT"
         
         return signal
 
@@ -413,6 +433,7 @@ class BacktestEngine:
         
         # Results
         self.results: Dict = {}
+        self.closed_trade_pnls: List[float] = []
     
     def add_strategy(self, strategy: Strategy):
         """Add trading strategy"""
@@ -464,16 +485,21 @@ class BacktestEngine:
         
         current_prices = {}
         trades_count = 0
+        bar_count = 0
+        last_timestamp = datetime.now()
+        self.closed_trade_pnls = []
         
         while self.events:
             event = self.events.popleft()
             
             if event.event_type == EventType.MARKET:
+                bar_count += 1
+                last_timestamp = event.timestamp
                 # Update current prices
                 current_prices[event.instrument] = event.price
                 
                 # Record portfolio snapshot every 10 bars
-                if len(self.portfolio.equity_curve) % 10 == 0:
+                if bar_count % 10 == 0:
                     self.portfolio.record_snapshot(event.timestamp, current_prices)
                 
                 # Feed to strategies
@@ -487,6 +513,12 @@ class BacktestEngine:
                         if order:
                             # Execute order
                             fill = self.execution_handler.execute_order(order, event.price)
+                            
+                            # Estimate realized PnL for closed long slices
+                            if fill.side == "SELL" and fill.instrument in self.portfolio.position_prices:
+                                entry_price = self.portfolio.position_prices[fill.instrument]
+                                realized_pnl = (fill.fill_price - entry_price) * fill.quantity - fill.commission
+                                self.closed_trade_pnls.append(realized_pnl)
                             
                             # Update portfolio
                             self.portfolio.update_position(
@@ -509,10 +541,42 @@ class BacktestEngine:
                             if verbose:
                                 print(f"  {fill.timestamp}: {fill.side} {fill.quantity} {fill.instrument} @ {fill.fill_price:.2f}")
         
+        # Force-close remaining open long positions for clean end-of-backtest accounting
+        for instrument, quantity in list(self.portfolio.positions.items()):
+            if quantity > 0 and instrument in current_prices:
+                final_price = current_prices[instrument]
+                close_order = OrderEvent(
+                    timestamp=last_timestamp,
+                    instrument=instrument,
+                    order_type="MARKET",
+                    side="SELL",
+                    quantity=quantity
+                )
+                close_fill = self.execution_handler.execute_order(close_order, final_price)
+                if instrument in self.portfolio.position_prices:
+                    entry_price = self.portfolio.position_prices[instrument]
+                    close_pnl = (close_fill.fill_price - entry_price) * close_fill.quantity - close_fill.commission
+                    self.closed_trade_pnls.append(close_pnl)
+                self.portfolio.update_position(
+                    close_fill.instrument,
+                    close_fill.quantity,
+                    close_fill.fill_price,
+                    close_fill.side
+                )
+                trades_count += 1
+                self.portfolio.trades.append({
+                    'timestamp': close_fill.timestamp,
+                    'instrument': close_fill.instrument,
+                    'side': close_fill.side,
+                    'quantity': close_fill.quantity,
+                    'price': close_fill.fill_price,
+                    'commission': close_fill.commission
+                })
+        
         # Final equity calculation
         final_equity = self.portfolio.calculate_equity(current_prices)
         self.portfolio.record_snapshot(
-            self.events[-1].timestamp if self.events else datetime.now(),
+            last_timestamp,
             current_prices
         )
         
@@ -597,11 +661,17 @@ class BacktestEngine:
             if dd > max_dd:
                 max_dd = dd
         
-        # Win rate (simplified)
-        wins = sum(1 for r in daily_returns if r > 0)
-        losses = sum(1 for r in daily_returns if r < 0)
-        total = wins + losses
-        win_rate = wins / total if total > 0 else 0.0
+        # Win rate from realized trade PnL if available
+        if self.closed_trade_pnls:
+            wins = sum(1 for p in self.closed_trade_pnls if p > 0)
+            losses = sum(1 for p in self.closed_trade_pnls if p < 0)
+            total = wins + losses
+            win_rate = wins / total if total > 0 else 0.0
+        else:
+            wins = sum(1 for r in daily_returns if r > 0)
+            losses = sum(1 for r in daily_returns if r < 0)
+            total = wins + losses
+            win_rate = wins / total if total > 0 else 0.0
         
         return {
             'initial_capital': self.initial_capital,
@@ -701,3 +771,451 @@ class WalkForwardOptimizer:
             combos.append(dict(zip(keys, combo)))
         
         return combos
+
+
+# ========================================================================
+# MULTI-LOT BACKTESTER EXTENSION
+# Extends event-driven backtester for ladder/pyramid/parallel tactics.
+# Tracks multiple simultaneous orders per tactic, queue position estimation,
+# partial fill simulation, and aggregate P&L.
+# ========================================================================
+
+@dataclass
+class LadderOrder:
+    """Represents a single order within a multi-level ladder."""
+    tactic: str
+    level: int
+    price: float
+    size: int
+    filled: int = 0
+    status: str = "PENDING"  # PENDING, WORKING, PARTIAL, FILLED, CANCELLED
+    queue_position: float = 0.0  # 0.0 = front, 1.0 = back
+    queue_decay_rate: float = 0.0
+    timestamp_armed: Optional[datetime] = None
+    timestamp_filled: Optional[datetime] = None
+    fill_price: float = 0.0
+    cancel_reason: str = ""
+
+
+class MultiLotBacktester:
+    """
+    Extends the event-driven backtester for multi-lot HFT tactics.
+
+    Supports:
+    - Ladder entries (LES, VTDL, EODPL): multiple limit orders at different levels
+    - Pyramid adds (MP): sequential orders gated on momentum confirmation
+    - Parallel positions (RCP): simultaneous buy/sell at range boundaries
+    - Scale-outs (SESO): partial exits with runner management
+    - VRS sizing: dynamic lot sizing based on volatility regime
+
+    Queue fill model: FIFO-based with configurable decay rate.
+    """
+
+    def __init__(self, base_engine: 'BacktestEngine' = None,
+                 queue_decay_model: str = "fifo",
+                 tick_value: float = 15.0,
+                 commission_per_share: float = 0.05,
+                 slippage_bps: int = 5):
+        self.engine = base_engine
+        self.queue_decay_model = queue_decay_model
+        self.tick_value = tick_value
+        self.commission_per_share = commission_per_share
+        self.slippage_bps = slippage_bps
+
+        # Active ladders: tactic_id -> list of LadderOrder
+        self.active_ladders: Dict[str, List[LadderOrder]] = {}
+
+        # Filled positions: list of dicts with entry/exit info
+        self.filled_positions: List[Dict] = []
+
+        # P&L tracking
+        self.realized_pnl = 0.0
+        self.unrealized_pnl = 0.0
+        self.trade_log: List[Dict] = []
+
+        # Current market state
+        self.current_bid = 0.0
+        self.current_ask = 0.0
+        self.current_mid = 0.0
+        self.current_price = 0.0
+        self.dom_snapshot: Dict = {}  # level -> {bid_size, ask_size, bid_price, ask_price}
+        self.tape_window: deque = deque(maxlen=1000)  # last 1000 trade prints
+        self.vwAP = 0.0
+
+        # Volatility regime tracking (for VRS)
+        self.vol_window: deque = deque(maxlen=1200)  # 60s of 50ms snapshots
+        self.cvi = 1.0
+        self.vm = 1.0  # volatility multiplier
+
+    def arm_ladder(self, tactic_id: str, tactic_name: str,
+                   levels: int, sizes: List[int], prices: List[float],
+                   side: str = "BUY") -> List[LadderOrder]:
+        """
+        Arm a multi-level ladder (LES, VTDL, EODPL, etc.)
+
+        Args:
+            tactic_id: Unique identifier (e.g., "LES_001")
+            tactic_name: Type (LES, MP, DPFL, VTDL, EODPL)
+            levels: Number of levels
+            sizes: Lot size per level
+            prices: Limit price per level
+            side: BUY or SELL
+
+        Returns:
+            List of LadderOrder objects
+        """
+        now = datetime.now()
+        orders = []
+        for i in range(levels):
+            order = LadderOrder(
+                tactic=tactic_name,
+                level=i,
+                price=prices[i],
+                size=sizes[i],
+                queue_position=self.estimate_queue_position(prices[i], side),
+                timestamp_armed=now,
+            )
+            orders.append(order)
+
+        self.active_ladders[tactic_id] = orders
+        return orders
+
+    def estimate_queue_position(self, price: float, side: str) -> float:
+        """
+        Estimate where your limit order sits in queue (FIFO model).
+
+        Returns 0.0 (front of queue) to 1.0 (back of queue).
+        Uses DOM snapshot at the price level.
+        """
+        if side == "BUY":
+            # Check bid side size at this price level
+            level_key = "bid"
+        else:
+            level_key = "ask"
+
+        # Find the DOM level closest to our price
+        total_size_at_level = 0
+        for lvl, data in self.dom_snapshot.items():
+            if side == "BUY" and abs(data.get("bid_price", 0) - price) < 0.01:
+                total_size_at_level = data.get("bid_size", 500)
+                break
+            elif side == "SELL" and abs(data.get("ask_price", 0) - price) < 0.01:
+                total_size_at_level = data.get("ask_size", 500)
+                break
+
+        if total_size_at_level == 0:
+            total_size_at_level = 500  # default estimate
+
+        # Assume we're placed randomly within the queue (uniform distribution)
+        # More sophisticated: use time-weighted placement
+        import random
+        queue_pos = random.uniform(0.1, 0.9)
+
+        return queue_pos
+
+    def update_market(self, bid: float, ask: float, dom: Dict = None,
+                      trade_print: Dict = None, vwap: float = None):
+        """
+        Update internal market state from tick data.
+
+        Args:
+            bid: Current best bid
+            ask: Current best ask
+            dom: Optional dict of level -> {bid_price, bid_size, ask_price, ask_size}
+            trade_print: Optional dict with {price, size, side, timestamp}
+            vwap: Current session VWAP
+        """
+        self.current_bid = bid
+        self.current_ask = ask
+        self.current_mid = (bid + ask) / 2
+        self.current_price = bid  # conservative
+
+        if dom:
+            self.dom_snapshot = dom
+        if trade_print:
+            self.tape_window.append(trade_print)
+            self.vol_window.append(trade_print.get("size", 0))
+        if vwap:
+            self.vwap = vwap
+
+    def compute_tape_velocity(self, window_ms: int = 200) -> tuple:
+        """
+        Compute tape velocity: total lots traded in last window_ms.
+
+        Returns:
+            (V_t_total, V_t_buy, V_t_sell)
+        """
+        if not self.tape_window:
+            return (0, 0, 0)
+
+        # Get recent prints (approximate by last N items)
+        n_prints = max(1, len(self.tape_window) * window_ms // 1000)
+        recent = list(self.tape_window)[-n_prints:]
+
+        v_t_buy = sum(p.get("size", 0) for p in recent if p.get("side") == "A")  # ask lifts
+        v_t_sell = sum(p.get("size", 0) for p in recent if p.get("side") == "B")  # bid hits
+        v_t_total = v_t_buy + v_t_sell
+
+        return (v_t_total, v_t_buy, v_t_sell)
+
+    def compute_imbalance_ratio(self, levels: int = 3) -> float:
+        """
+        Compute bid/ask imbalance ratio across top N levels.
+
+        IR = sum(bid_sizes) / sum(ask_sizes)
+        IR > 1.0 = bid-heavy (bullish)
+        IR < 1.0 = ask-heavy (bearish)
+        """
+        bid_sum = 0
+        ask_sum = 0
+        for lvl in range(min(levels, len(self.dom_snapshot))):
+            if lvl in self.dom_snapshot:
+                bid_sum += self.dom_snapshot[lvl].get("bid_size", 0)
+                ask_sum += self.dom_snapshot[lvl].get("ask_size", 0)
+
+        if ask_sum == 0:
+            return 10.0
+        return bid_sum / ask_sum
+
+    def process_ladder_fills(self, current_time: datetime) -> List[Dict]:
+        """
+        Check all pending ladder orders against current market.
+        Simulate fills based on price crossing + queue decay.
+
+        Returns:
+            List of fill events
+        """
+        fills = []
+
+        for tactic_id, orders in list(self.active_ladders.items()):
+            for order in orders:
+                if order.status != "PENDING":
+                    continue
+
+                # Check if price has crossed our limit
+                if order.price >= self.current_bid and order.price <= self.current_ask:
+                    # Price is at our level — check queue position
+                    fill_probability = self._compute_fill_probability(order)
+
+                    if fill_probability > 0.3:  # threshold
+                        # Simulate fill (partial or full)
+                        fill_size = self._simulate_fill_size(order, fill_probability)
+
+                        if fill_size > 0:
+                            order.filled += fill_size
+                            if order.filled >= order.size:
+                                order.status = "FILLED"
+                                order.timestamp_filled = current_time
+                                order.fill_price = order.price  # limit price
+
+                                fills.append({
+                                    "tactic_id": tactic_id,
+                                    "tactic": order.tactic,
+                                    "level": order.level,
+                                    "side": "BUY",
+                                    "size": order.size,
+                                    "price": order.price,
+                                    "timestamp": current_time,
+                                })
+                            else:
+                                order.status = "PARTIAL"
+                                fills.append({
+                                    "tactic_id": tactic_id,
+                                    "tactic": order.tactic,
+                                    "level": order.level,
+                                    "side": "BUY",
+                                    "size": fill_size,
+                                    "price": order.price,
+                                    "timestamp": current_time,
+                                    "partial": True,
+                                })
+
+                # Time-based cancel: unfilled after 5 seconds
+                if order.timestamp_armed and \
+                   (current_time - order.timestamp_armed).total_seconds() > 5.0:
+                    if order.status == "PENDING":
+                        order.status = "CANCELLED"
+                        order.cancel_reason = "TIME_EXPIRY"
+
+        return fills
+
+    def _compute_fill_probability(self, order: LadderOrder) -> float:
+        """
+        Compute probability that this order gets filled.
+
+        Based on:
+        - Queue position (closer to front = higher probability)
+        - Queue decay rate (faster decay = higher probability)
+        - Price aggressiveness (at NBBO = higher probability)
+        """
+        # Queue position factor: 1.0 at front, 0.0 at back
+        queue_factor = 1.0 - order.queue_position
+
+        # Queue decay: estimate based on recent tape velocity
+        v_t, _, _ = self.compute_tape_velocity()
+        decay_rate = v_t / 1000.0  # normalize
+        decay_factor = min(1.0, decay_rate * 2)
+
+        # Price factor: at NBBO = 1.0, 1 tick away = 0.5, 2+ ticks = 0.1
+        price_distance = abs(order.price - self.current_mid)
+        tick_size = self.current_ask - self.current_bid
+        if tick_size == 0:
+            tick_size = 0.01
+        price_factor = max(0.1, 1.0 - price_distance / (tick_size * 3))
+
+        # Combined probability
+        prob = queue_factor * 0.4 + decay_factor * 0.3 + price_factor * 0.3
+
+        return prob
+
+    def _simulate_fill_size(self, order: LadderOrder, prob: float) -> int:
+        """
+        Simulate how many lots get filled from this order.
+
+        Returns fill size (0 to remaining size).
+        """
+        remaining = order.size - order.filled
+        import random
+        fill_fraction = prob * random.uniform(0.5, 1.0)
+        fill_size = max(1, int(remaining * fill_fraction))
+        return min(fill_size, remaining)
+
+    def compute_unrealized_pnl(self) -> float:
+        """Compute unrealized P&L across all filled positions."""
+        unrealized = 0.0
+        for pos in self.filled_positions:
+            if pos.get("exit_price") is None:
+                # Still open
+                entry = pos["entry_price"]
+                qty = pos["size"]
+                # Current exit price = current bid (for longs)
+                unrealized += (self.current_bid - entry) * qty * self.tick_value
+        self.unrealized_pnl = unrealized
+        return unrealized
+
+    def exit_position(self, tactic_id: str, level: int, exit_price: float,
+                      current_time: datetime) -> Dict:
+        """
+        Exit a filled position (scale-out or flatten).
+
+        Returns:
+            Dict with exit details including realized P&L.
+        """
+        # Find the position
+        for i, pos in enumerate(self.filled_positions):
+            if pos["tactic_id"] == tactic_id and pos["level"] == level and pos.get("exit_price") is None:
+                entry = pos["entry_price"]
+                qty = pos["size"]
+                pnl = (exit_price - entry) * qty * self.tick_value
+                commission = qty * self.commission_per_share
+                slippage = qty * exit_price * self.slippage_bps / 10000
+                net_pnl = pnl - commission - slippage
+
+                pos["exit_price"] = exit_price
+                pos["exit_timestamp"] = current_time
+                pos["realized_pnl"] = net_pnl
+
+                self.realized_pnl += net_pnl
+
+                result = {
+                    "tactic_id": tactic_id,
+                    "level": level,
+                    "entry": entry,
+                    "exit": exit_price,
+                    "size": qty,
+                    "gross_pnl": pnl,
+                    "commission": commission,
+                    "slippage": slippage,
+                    "net_pnl": net_pnl,
+                    "timestamp": current_time,
+                }
+                self.trade_log.append(result)
+                return result
+
+        return {"error": "Position not found", "tactic_id": tactic_id, "level": level}
+
+    def compute_aggregate_pnl(self) -> Dict:
+        """
+        Compute aggregate P&L across all tactics.
+
+        Returns summary dict.
+        """
+        total_realized = self.realized_pnl
+        total_unrealized = self.compute_unrealized_pnl()
+
+        winning_trades = [t for t in self.trade_log if t.get("net_pnl", 0) > 0]
+        losing_trades = [t for t in self.trade_log if t.get("net_pnl", 0) <= 0]
+
+        return {
+            "realized_pnl": total_realized,
+            "unrealized_pnl": total_unrealized,
+            "total_pnl": total_realized + total_unrealized,
+            "total_trades": len(self.trade_log),
+            "winning_trades": len(winning_trades),
+            "losing_trades": len(losing_trades),
+            "win_rate": len(winning_trades) / max(1, len(self.trade_log)) * 100,
+            "avg_win": np.mean([t["net_pnl"] for t in winning_trades]) if winning_trades else 0,
+            "avg_loss": np.mean([t["net_pnl"] for t in losing_trades]) if losing_trades else 0,
+            "max_drawdown": self._compute_max_drawdown(),
+            "trade_log": self.trade_log,
+        }
+
+    def _compute_max_drawdown(self) -> float:
+        """Compute maximum drawdown from trade log."""
+        if not self.trade_log:
+            return 0.0
+
+        cumulative = 0.0
+        peak = 0.0
+        max_dd = 0.0
+
+        for trade in self.trade_log:
+            cumulative += trade.get("net_pnl", 0)
+            if cumulative > peak:
+                peak = cumulative
+            dd = peak - cumulative
+            if dd > max_dd:
+                max_dd = dd
+
+        return max_dd
+
+    def flatten_all(self, current_time: datetime, exit_price: float = None) -> List[Dict]:
+        """
+        Emergency flatten: exit ALL open positions at market.
+
+        Args:
+            exit_price: If None, uses current_bid
+        """
+        price = exit_price or self.current_bid
+        results = []
+
+        for tactic_id, orders in self.active_ladders.items():
+            for order in orders:
+                if order.status in ("FILLED", "PARTIAL"):
+                    pos = {
+                        "tactic_id": tactic_id,
+                        "level": order.level,
+                        "entry_price": order.fill_price or order.price,
+                        "size": order.filled,
+                        "exit_price": None,
+                    }
+                    # Add to filled positions if not already there
+                    existing = [p for p in self.filled_positions
+                               if p["tactic_id"] == tactic_id and p["level"] == order.level]
+                    if not existing:
+                        self.filled_positions.append(pos)
+                        idx = len(self.filled_positions) - 1
+                    else:
+                        idx = self.filled_positions.index(existing[0])
+
+                    if self.filled_positions[idx].get("exit_price") is None:
+                        result = self.exit_position(tactic_id, order.level, price, current_time)
+                        results.append(result)
+
+            # Cancel all pending orders
+            for order in orders:
+                if order.status == "PENDING":
+                    order.status = "CANCELLED"
+                    order.cancel_reason = "EMERGENCY_FLATTEN"
+
+        return results

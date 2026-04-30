@@ -1,0 +1,169 @@
+{
+  "timestamp": "2026-04-09T22:35:20.883128",
+  "symbol": "HNGSNGBEES",
+  "horizon": 10,
+  "n_features": 79,
+  "feature_names": [
+    "mid_price",
+    "spread",
+    "spread_pct",
+    "spread_log",
+    "log_mid",
+    "wmp",
+    "wmp_mid_diff",
+    "bid_vol_1",
+    "ask_vol_1",
+    "vol_imbalance_l1",
+    "vol_imbalance_l2",
+    "vol_imbalance_l3",
+    "vol_imbalance_l4",
+    "vol_imbalance_l5",
+    "vol_imbalance_total",
+    "vol_ratio_top3",
+    "vol_concentration",
+    "ofi_l1",
+    "ofi_l2",
+    "ofi_l3",
+    "ofi_weighted",
+    "ofi_momentum",
+    "ofi_momentum_3",
+    "ofi_acceleration",
+    "return_1",
+    "return_2",
+    "return_3",
+    "return_5",
+    "return_10",
+    "return_20",
+    "return_50",
+    "momentum_5",
+    "momentum_10",
+    "momentum_20",
+    "momentum_50",
+    "vol_5",
+    "vol_log_5",
+    "vol_10",
+    "vol_log_10",
+    "vol_20",
+    "vol_log_20",
+    "vol_50",
+    "vol_log_50",
+    "vol_100",
+    "vol_log_100",
+    "vol_ratio_5_50",
+    "vol_ratio_10_100",
+    "vol_regime",
+    "parkinson_vol",
+    "gk_vol",
+    "bid_slope",
+    "bid_curvature",
+    "ask_slope",
+    "ask_curvature",
+    "bid_steepness",
+    "ask_steepness",
+    "book_symmetry",
+    "dist_to_ma10",
+    "dist_to_ma20",
+    "dist_to_ma50",
+    "dist_to_ma100",
+    "dist_to_ma200",
+    "ma20_ma50_cross",
+    "bb_upper",
+    "bb_lower",
+    "bb_position",
+    "rsi_14",
+    "queue_imbalance",
+    "queue_position",
+    "trade_side_imbalance",
+    "trade_intensity",
+    "kyle_lambda",
+    "amihud",
+    "roll_spread",
+    "vol_regime_high",
+    "vol_regime_low",
+    "trend_strong_up",
+    "trend_strong_down",
+    "is_high_vol_regime"
+  ],
+  "test_results": {
+    "accuracy": 0.771,
+    "f1_macro": 0.4565,
+    "f1_up": 0.2241,
+    "f1_down": 0.2571
+  },
+  "top_features": [
+    [
+      "vol_log_100",
+      0.1
+    ],
+    [
+      "vol_100",
+      0.0747
+    ],
+    [
+      "vol_regime",
+      0.0489
+    ],
+    [
+      "dist_to_ma200",
+      0.0394
+    ],
+    [
+      "vol_log_50",
+      0.0259
+    ],
+    [
+      "vol_50",
+      0.0194
+    ],
+    [
+      "roll_spread",
+      0.0192
+    ],
+    [
+      "trade_intensity",
+      0.0181
+    ],
+    [
+      "vol_imbalance_l5",
+      0.018
+    ],
+    [
+      "vol_imbalance_l4",
+      0.0174
+    ],
+    [
+      "ask_curvature",
+      0.0171
+    ],
+    [
+      "ofi_momentum_3",
+      0.0167
+    ],
+    [
+      "bid_curvature",
+      0.0167
+    ],
+    [
+      "ofi_acceleration",
+      0.016
+    ],
+    [
+      "bid_slope",
+      0.016
+    ]
+  ],
+  "individual_models": {
+    "xgboost": {
+      "accuracy": 0.7542,
+      "f1_macro": 0.4508
+    },
+    "random_forest": {
+      "accuracy": 0.7534,
+      "f1_macro": 0.4534
+    },
+    "gradient_boosting": {
+      "accuracy": 0.8697,
+      "f1_macro": 0.3274
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "symbol": "RELIANCE",
+  "model": "output/RELIANCE_live_trained.joblib",
+  "initial_capital": 1000000,
+  "final_capital": 959484.0088624998,
+  "total_pnl": -40515.991137500154,
+  "return_pct": -4.051599113750015,
+  "total_trades": 243,
+  "winning_trades": 95,
+  "losing_trades": 148,
+  "win_rate": 0.39094650205761317,
+  "accuracy": 0.5015621745469694,
+  "avg_confidence": 0.6472986936569214,
+  "timestamp": "2026-04-10T14:02:18.968976"
+}

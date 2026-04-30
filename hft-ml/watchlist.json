@@ -1,0 +1,65 @@
+{
+  "symbols": [
+    {
+      "symbol": "RELIANCE",
+      "name": "Reliance Industries",
+      "sector": "Energy",
+      "priority": 90
+    },
+    {
+      "symbol": "TCS",
+      "name": "Tata Consultancy Services",
+      "sector": "IT",
+      "priority": 85
+    },
+    {
+      "symbol": "INFY",
+      "name": "Infosys",
+      "sector": "IT",
+      "priority": 80
+    },
+    {
+      "symbol": "HDFCBANK",
+      "name": "HDFC Bank",
+      "sector": "Banking",
+      "priority": 85
+    },
+    {
+      "symbol": "SBIN",
+      "name": "State Bank of India",
+      "sector": "Banking",
+      "priority": 75
+    },
+    {
+      "symbol": "ICICIBANK",
+      "name": "ICICI Bank",
+      "sector": "Banking",
+      "priority": 75
+    },
+    {
+      "symbol": "WIPRO",
+      "name": "Wipro",
+      "sector": "IT",
+      "priority": 70
+    },
+    {
+      "symbol": "TATAMOTORS",
+      "name": "Tata Motors",
+      "sector": "Auto",
+      "priority": 70
+    },
+    {
+      "symbol": "TATASTEEL",
+      "name": "Tata Steel",
+      "sector": "Metal",
+      "priority": 65
+    },
+    {
+      "symbol": "HCLTECH",
+      "name": "HCL Technologies",
+      "sector": "IT",
+      "priority": 70
+    }
+  ],
+  "last_updated": "2026-04-10T16:37:19.857063"
+}

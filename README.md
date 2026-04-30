@@ -20,6 +20,7 @@ A comprehensive High-Frequency Trading simulation platform designed to model het
 | **Risk Management** | Python | Pre/post-trade checks, VaR, circuit breakers |
 | **Regulatory Compliance** | Python | Spoofing, wash trading, front-running detection |
 | **Analytics Engine** | Python | 30+ performance metrics, attribution analysis |
+| **Bloomberg Terminal Dashboard** | FastAPI + Web | Professional real-time trading dashboard |
 
 ### 📊 Performance Targets
 
@@ -65,6 +66,15 @@ quant_project/
 ├── hft-analytics/              # Python analytics
 │   └── performance_analytics.py # Performance metrics
 │
+├── hft-dashboard/              # Bloomberg Terminal Dashboard ⭐ NEW
+│   ├── dashboard_server.py     # FastAPI backend + WebSocket
+│   ├── public/
+│   │   └── index.html          # Professional terminal UI
+│   ├── requirements.txt        # Python dependencies
+│   ├── start_dashboard.bat     # Windows startup script
+│   ├── README.md               # Dashboard quick start
+│   └── DASHBOARD_GUIDE.md      # Complete user guide
+│
 └── docs/                       # Documentation
     ├── ARCHITECTURE.md         # System design
     ├── PROJECT_DOCUMENTATION.md # Complete docs
@@ -91,7 +101,29 @@ pip install -r requirements.txt
 python examples/demo_simulation.py
 ```
 
-### 3. Create Trading Agents
+### 3. Launch Bloomberg Terminal Dashboard ⭐
+
+```bash
+cd hft-dashboard
+pip install -r requirements.txt
+python dashboard_server.py
+```
+
+Then open your browser to **http://localhost:8000**
+
+**Keyboard Shortcuts:**
+- `1` - Overview (portfolio, indices, charts)
+- `2` - Live Prices (10 NSE stocks)
+- `3` - Order Book (Level 2 depth)
+- `4` - Agents (5 trading agents)
+- `5` - Trades (real-time blotter)
+- `6` - Risk (VaR, regime, volatility)
+- `R` - Refresh data
+- `F` - Toggle fullscreen
+
+See [hft-dashboard/README.md](hft-dashboard/README.md) for details.
+
+### 4. Create Trading Agents
 
 ```python
 from hft_strategies import RetailTraderAgent, HFTMarketMakerAgent

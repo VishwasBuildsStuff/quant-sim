@@ -5,7 +5,14 @@ edition = "2021"
 authors = ["HFT Platform Team"]
 description = "Institutional-grade high-frequency trading matching engine"
 
+[lib]
+name = "hft_matching_engine"
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
+# PyO3 bindings
+pyo3 = { version = "0.21", features = ["extension-module"] }
+
 # High-performance data structures
 crossbeam = "0.8"
 parking_lot = "0.12"

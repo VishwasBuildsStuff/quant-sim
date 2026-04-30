@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python *)",
+      "Bash(dir *)",
+      "Bash(setx *)",
+      "Bash(findstr *)",
+      "Bash(select-string *)",
+      "Bash(notepad *)",
+      "Bash(add-content *)",
+      "Bash(write-host *)",
+      "Bash(powershell *)"
+    ]
+  },
+  "$version": 3
+}

@@ -1,0 +1,59 @@
+{
+  "symbol": "RELIANCE",
+  "data_source": "auto",
+  "update_interval_sec": 5,
+  "order_book_levels": 10,
+  "recording": {
+    "enabled": true,
+    "output_dir": "data/live",
+    "flush_interval": 100
+  },
+  "zerodha": {
+    "enabled": false,
+    "api_key": "YOUR_API_KEY_HERE",
+    "access_token": "YOUR_ACCESS_TOKEN_HERE"
+  },
+  "trading": {
+    "paper_trading": true,
+    "capital": 1000000,
+    "risk_per_trade": 0.02,
+    "max_position": 1000,
+    "max_daily_loss": 20000,
+    "max_drawdown": 50000
+  },
+  "model": {
+    "path": "output/RELIANCE_ensemble.joblib",
+    "prediction_horizon": 10,
+    "confidence_threshold": 0.6
+  },
+  "logging": {
+    "level": "INFO",
+    "file": "live_trading.log"
+  },
+  "live_minimal": {
+    "symbol": "SBIN",
+    "max_position_lots": 10,
+    "max_daily_loss": 5000,
+    "tactics": ["LES"],
+    "tactic_sizes": {
+      "LES": 5,
+      "MP": 5,
+      "DPFL": 5
+    },
+    "paper_trading": true,
+    "capital": 1000000,
+    "risk_per_trade": 0.01,
+    "max_drawdown": 10000,
+    "update_interval_sec": 1,
+    "order_book_levels": 5,
+    "tick_value": 0.05,
+    "lot_size": 75,
+    "commission_per_lot": 4.0,
+    "slippage_ticks": 0.5,
+    "logging": {
+      "level": "DEBUG",
+      "file": "live_trading_minimal.log"
+    },
+    "notes": "SAFE DEFAULT: paper_trading=true, single tactic (LES). Add more tactics as confidence grows."
+  }
+}

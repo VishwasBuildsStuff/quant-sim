@@ -1,0 +1,12 @@
+{
+  "gru_cnn_cpu": {
+    "avg_latency_us": 12002.1774,
+    "median_latency_us": 11878.400000000001,
+    "p99_latency_us": 17085.827999999998,
+    "p999_latency_us": 24587.62970000097,
+    "min_latency_us": 9358.4,
+    "max_latency_us": 35306.6,
+    "std_latency_us": 1519.7207986302087,
+    "signals_per_second": 83.31821524317745
+  }
+}

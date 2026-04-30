@@ -1,0 +1,258 @@
+================================================================================
+PRE-MARKET EXECUTION CHECKLIST
+HFT Multi-Lot Execution Framework — Daily Pre-Open Validation
+================================================================================
+Complete ALL steps 15 minutes before market open (09:00 IST for NSE).
+Print this page or display on Monitor 3 (right screen).
+
+================================================================================
+STEP 1: DATA FEED VALIDATION (09:00 – 09:05 IST)
+================================================================================
+
+[ ] 1a. Exchange connectivity: Primary DMA (NSE Co-Lo)
+        Command: ping [colo-ip]
+        Verify: avg latency < 20µs, 0% packet loss
+        Actual: ______ µs  □ PASS  □ FAIL
+
+[ ] 1b. Backup DMA connectivity
+        Command: ping [backup-ip]
+        Verify: avg latency < 50µs
+        Actual: ______ µs  □ PASS  □ FAIL
+
+[ ] 1c. L2 DOM feed: 20 levels, 50ms refresh
+        Test: Open DOM for SBIN → 20 levels populate within 2s
+        Refresh rate: ______ ms  □ PASS  □ FAIL
+
+[ ] 1d. Time & Sales feed: Millisecond timestamps
+        Test: Watch tape for 10s → timestamps show .mmm precision
+        Print frequency: ≥ 2 prints/100ms  □ PASS  □ FAIL
+
+[ ] 1e. VWAP feed: Session VWAP initializes at 09:15
+        Verify: VWAP display shows session reset  □ PASS  □ FAIL
+
+[ ] 1f. Block / Dark Pool feed: Active and subscribed
+        Verify: Feed status → "Connected — NSE Block/Bulk Deals"
+        □ PASS  □ FAIL
+
+[ ] 1g. News feed: Active, no backlog
+        Verify: Last news timestamp < 5 min old  □ PASS  □ FAIL
+
+[ ] 1h. VRS data feed: CVI baseline calculable
+        Verify: CVI shows "Pre-market baseline — loading"  □ PASS  □ FAIL
+
+STEP 1 RESULT:  ___ / 8 checks passed
+  If < 8: DO NOT PROCEED. Fix data feeds first.
+
+================================================================================
+STEP 2: HOTKEY CALIBRATION & CASCADE TESTING (09:05 – 09:10 IST)
+================================================================================
+
+[ ] 2a. All hotkeys registered, no conflicts
+        Test: Open hotkey config → no duplicate mappings
+        Verify: CTRL, ALT, SHIFT modifiers all detected
+        □ PASS  □ FAIL
+
+[ ] 2b. Cascade gating logic: Test with simulated data
+        Command: python test_les_backtest.py --quick
+        Verify: Gate checks fire (V_t/IR thresholds)
+        □ PASS  □ FAIL
+
+[ ] 2c. Emergency flatten (F12): Test in SIM mode
+        Press: F12 → Verify "FLAT ALL" order generates
+        Verify: Dual-routing (primary + backup) logged
+        □ PASS  □ FAIL
+
+[ ] 2d. Numpad size entry: Test 1–9 mapping
+        Press: Numpad 5 → "50 lots" displays
+        Press: Numpad 3 → "30 lots" displays
+        □ PASS  □ FAIL
+
+[ ] 2e. Foot pedal registration: Test all 3 pedals
+        Left: F12 fires  |  Middle: ACK dismisses  |  Right: PAUSE toggles
+        □ PASS  □ FAIL
+
+[ ] 2f. Hotkey debounce: Same key blocked for 2s after fill
+        Test: Send same hotkey twice → second blocked
+        □ PASS  □ FAIL
+
+STEP 2 RESULT:  ___ / 6 checks passed
+  If < 6: Re-calibrate hotkeys. Do NOT trade with untested hotkeys.
+
+================================================================================
+STEP 3: RISK GUARD CONFIGURATION (09:10 – 09:12 IST)
+================================================================================
+
+[ ] 3a. Max net delta per instrument: ±200 lots
+        Risk Dashboard → Max_Net_Delta = 200  □ SET  □ NOT SET
+
+[ ] 3b. Max gross across all instruments: ±500 lots
+        Risk Dashboard → Max_Gross_Total = 500  □ SET  □ NOT SET
+
+[ ] 3c. Daily loss cap: ₹1,00,000
+        Risk Dashboard → Daily_Loss_Limit = 100000  □ SET  □ NOT SET
+
+[ ] 3d. Per-strategy loss caps:
+        LES ₹30K | MP ₹40K | DPFL ₹35K | VTDL ₹35K | EODPL ₹40K
+        □ SET  □ NOT SET
+
+[ ] 3e. VRS parameters: CVI baseline loaded, VM = 1.00
+        VRS Panel → CVI active, VM = 1.00  □ SET  □ NOT SET
+
+[ ] 3f. Auto-flatten triggers: CVI > 2.50 (50%), > 3.00 (100%)
+        Volatility Guard → thresholds set  □ SET  □ NOT SET
+
+[ ] 3g. Time-based exits: Max hold times configured
+        LES 15s | MP 30s | DPFL 45s | VTDL 60s | EODPL T-1min
+        □ SET  □ NOT SET
+
+[ ] 3h. Session hard close: 15:29:00 IST flatten all
+        Session Timer → Hard_Close = 15:29:00  □ SET  □ NOT SET
+
+[ ] 3i. Correlation hedge: Sector cap ±300 lots (Financials)
+        Correlation Panel → Sector_Net_Cap = 300  □ SET  □ NOT SET
+
+[ ] 3j. Order-to-trade ratio: 8:1 warn, 10:1 block
+        Routing Panel → Cancel_Trade_Ratio = 8, 10  □ SET  □ NOT SET
+
+STEP 3 RESULT:  ___ / 10 checks passed
+  If < 10: DO NOT PROCEED. Risk guards are non-negotiable.
+
+================================================================================
+STEP 4: TACTIC CONFIGURATION & SIZING (09:12 – 09:14 IST)
+================================================================================
+
+[ ] 4a. VRS active: Auto-sizing ENABLED, override requires reason
+        VRS Panel → Auto-Size = ON, Override_Requires_Reason = ON
+        □ PASS  □ FAIL
+
+[ ] 4b. Base lot sizes configured per tactic:
+        LES: 3×50 | MP: 40-30-20-10 | DPFL: 50-35-25-15
+        RCP: 40/side | VTDL: 30-40-50 | EODPL: 25-35-45-55
+        Multi-Lot Config → all match  □ PASS  □ FAIL
+
+[ ] 4c. POST_ONLY default flag: ENABLED for entries
+        Order Defaults → Default_Flag = POST_ONLY  □ PASS  □ FAIL
+
+[ ] 4d. IOC fallback threshold: Bid/Ask size < 300
+        Order Defaults → IOC_Fallback_Threshold = 300  □ PASS  □ FAIL
+
+[ ] 4e. Routing: Direct DMA primary, Smart Router backup
+        L0-L1 = Direct DMA | L2+ = Smart Router  □ PASS  □ FAIL
+
+[ ] 4f. Rebate mode: Passive-first
+        Routing Panel → Rebate_Mode = Passive-first  □ PASS  □ FAIL
+
+[ ] 4g. Reprice ladder: Max 2 attempts enabled
+        Queue Management → Max_Reprice_Attempts = 2  □ PASS  □ FAIL
+
+[ ] 4h. All tactics ENABLED for session
+        Tactic Toggle → All 6 show "ENABLED"
+        Exception: Disable EODPL on non-expiry days  □ PASS  □ FAIL
+
+STEP 4 RESULT:  ___ / 8 checks passed
+  If < 8: Fix configuration before market opens.
+
+================================================================================
+STEP 5: FINAL PRE-OPEN VERIFICATION (09:14 – 09:15 IST)
+================================================================================
+
+[ ] 5a. Clock sync: Terminal = Exchange ± 1ms
+        NTP sync → offset < 1ms  □ PASS  □ FAIL
+
+[ ] 5b. Session timer: Counts to 09:15:00 IST open
+        Timer → "Market opens in X min Y sec"  □ PASS  □ FAIL
+
+[ ] 5c. Position flat: No overnight from prior session
+        Net Delta = 0 | All strategy positions = 0  □ PASS  □ FAIL
+
+[ ] 5d. Pending orders cleared: No stale orders
+        Pending Orders = 0 | Order book clean  □ PASS  □ FAIL
+
+[ ] 5e. P&L reset: Session Realized = ₹0
+        P&L Dashboard → Realized_Today = 0  □ PASS  □ FAIL
+
+[ ] 5f. Alert log cleared: Prior session alerts purged
+        Alert Log → "No active alerts"  □ PASS  □ FAIL
+
+[ ] 5g. Backup terminal: Warm standby confirmed
+        Backup PING < 100ms, session data synced  □ PASS  □ FAIL
+
+[ ] 5h. Communication: SMS/email alert channel active
+        Send test alert → receipt confirmed on phone/email  □ PASS  □ FAIL
+
+[ ] 5i. Physical setup: Keyboard, pedals, monitors functional
+        Rapid sequence (CTRL+B1, B2, B3, E1, F12) → all register
+        All 3 pedals → all register  □ PASS  □ FAIL
+
+[ ] 5j. MENTAL CHECK: Session plan reviewed and verbalized
+        Say aloud:
+        "I am trading [list tactics] today."
+        "Max net [+/- ___ lots]. Daily cap ₹[_______]. F12 flattens all."
+        □ PASS  □ FAIL
+
+STEP 5 RESULT:  ___ / 10 checks passed
+  If < 10: Fix before open. Step 5j is mandatory — say it aloud.
+
+================================================================================
+OVERALL SCORECARD
+================================================================================
+
+Step 1 (Data Feeds):        ___ / 8
+Step 2 (Hotkeys):           ___ / 6
+Step 3 (Risk Guards):       ___ / 10
+Step 4 (Tactic Config):     ___ / 8
+Step 5 (Final Verify):      ___ / 10
+──────────────────────────────────────
+TOTAL:                      ___ / 42
+
+PASS CRITERIA: 42 / 42 (ALL must pass)
+  If 41/42: Fix the 1 failure, re-verify.
+  If ≤ 40: DO NOT OPEN POSITIONS. Resolve all failures.
+
+OPERATOR SIGNATURE: ________________________  TIME: _______
+
+SESSION NOTES:
+_______________________________________________________________________
+_______________________________________________________________________
+_______________________________________________________________________
+
+================================================================================
+QUICK-REFERENCE COMMANDS
+================================================================================
+
+# Run all backtests (weekly validation):
+cd V:\quant_project\hft-strategies
+python test_all_tactics.py --export
+
+# Run Rust matching engine tests (weekly validation):
+cd V:\quant_project\hft-matching-engine
+cargo test --release --test multi_lot_tests
+
+# Run hotkey speed test (daily warmup):
+cd V:\quant_project\hft-strategies
+python hotkey_speed_test.py
+
+# Run DOM replay (practice before live):
+cd V:\quant_project\hft-strategies
+python dom_replay.py --symbol SBIN --speed 1x
+
+# Run paper trader session (daily warmup, 30 min minimum):
+cd V:\quant_project\hft-strategies
+python paper_trader_hft.py --symbol SBIN --tactics all --duration 30m
+
+# Generate synthetic data (if needed):
+cd V:\quant_project\hft-ml
+python generate_realistic_data.py --symbol SBIN --snapshots 50000
+
+================================================================================
+EMERGENCY CONTACTS
+================================================================================
+
+IT Support: ________________________  Phone: ________________
+Risk Manager: ______________________  Phone: ________________
+Supervisor:   ______________________  Phone: ________________
+Exchange Desk: _____________________  Phone: ________________
+
+================================================================================
+END OF CHECKLIST
+================================================================================

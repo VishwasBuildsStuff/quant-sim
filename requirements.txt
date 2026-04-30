@@ -1,0 +1,53 @@
+# ============================================================
+# Unified Requirements — HFT Multi-Lot Execution Framework
+# Merged from: hft-simulation, hft-ml, hft-strategies, hft-dashboard
+# ============================================================
+
+# ---- Core Data & Numerics ----
+numpy>=1.24.0
+pandas>=2.0.0
+scipy>=1.11.0
+pyarrow>=14.0.0
+
+# ---- Machine Learning ----
+torch>=2.1.0
+torchvision>=0.16.0
+scikit-learn>=1.3.0
+xgboost>=2.0.0
+lightgbm>=4.0.0
+optuna>=3.5.0
+
+# ---- Visualization ----
+matplotlib>=3.8.0
+seaborn>=0.13.0
+plotly>=5.18.0
+
+# ---- Database & ORM ----
+psycopg2-binary>=2.9.0
+sqlalchemy>=2.0.0
+
+# ---- Web / API (Dashboard) ----
+fastapi>=0.104.0
+uvicorn>=0.24.0
+websockets>=12.0
+
+# ---- Data Feeds ----
+yfinance>=0.2.31
+
+# ---- Simulation & Stochastic ----
+# (uses numpy/scipy — already listed)
+
+# ---- Utilities ----
+pytz>=2024.1
+tqdm>=4.66.0
+loguru>=0.7.0
+python-dotenv>=1.0.0
+
+# ---- Testing (NEW — was missing) ----
+pytest>=7.4.0
+pytest-asyncio>=0.23.0
+pytest-mock>=3.12.0
+keyboard>=0.13.5  # hotkey speed test (requires admin on Windows)
+
+# ---- Telegram Alerts ----
+python-telegram-bot>=21.0

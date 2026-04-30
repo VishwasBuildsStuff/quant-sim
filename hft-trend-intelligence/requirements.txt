@@ -1,0 +1,41 @@
+# Requirements for Trend Intelligence Platform
+
+# Web Scraping
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+selenium>=4.15.0
+playwright>=1.40.0
+
+# APIs
+pytrends>=4.8.0  # Google Trends
+praw>=7.7.0      # Reddit API
+newsapi-python>=0.2.7  # News API
+
+# NLP & Sentiment
+transformers>=4.35.0
+torch>=2.1.0
+textblob>=0.17.1
+vaderSentiment>=3.3.2
+
+# Data Processing
+pandas>=2.0.0
+numpy>=1.24.0
+scipy>=1.11.0
+
+# Database
+sqlite3  # Built-in Python
+
+# Visualization
+plotly>=5.18.0
+dash>=2.14.0
+
+# Scheduling
+apscheduler>=3.10.0
+
+# Notifications
+python-telegram-bot>=20.7
+
+# Utilities
+pytz>=2024.1
+python-dateutil>=2.8.2
